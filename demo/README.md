@@ -1,13 +1,15 @@
 # Netis SMLR Tech Preview — live demo app
 
 Point SMLR at **this machine's real telemetry** and watch it monitor in real time: live
-CPU / memory / load, and the system's real-time logs. Two tabs — **Metric Monitoring** and
-**Log Monitoring** — each streams frames to the **SMLR SGLang inference server on the GPU
-host** and shows the model's per-frame cognition: the policy action (`WAIT → WARN → ALERT`),
-its observation, its reasoning, and how escalation builds as an anomaly sustains.
+CPU / memory / load, and the system's real-time logs. Two interfaces:
 
-Inference runs on the GPU host (SGLang, continuous batching). The demo app itself is a **thin
-client** — no model, no torch, no GPU on the client side.
+- **HTML dashboard** (`web.py`) — left: live metrics with rolling charts; right: the model's
+  output, **streamed token-by-token** (decision the instant prefill finishes, reasoning types out,
+  then the final `WARN` / `ALERT`).
+- **Gradio app** (`app.py`) — tabbed **Metric Monitoring** / **Log Monitoring**.
+
+Both are **thin clients**: they read real host telemetry and stream frames to an inference server on
+the GPU host. No model, no torch, no GPU on the client side.
 
 <p align="center"><i>Netis SMLR Tech Preview — research preview, not a production monitor.
 Keep a human in the loop for any real action.</i></p>
@@ -44,8 +46,9 @@ PORT=8100 SGL_GPU=<idle> CKPT=$HOME/models/smlr-1b-ml6 ./start_sgl_server.sh
 If the demo runs on another machine (e.g. your laptop), tunnel the port over SSH:
 
 ```bash
-ssh -N -L 8140:localhost:8140 <gpu-host>       # token-stream server (option A)
-ssh -N -L 8100:localhost:8100 <gpu-host>       # SGLang frame server (option B)
+ssh -N -L 8141:localhost:8141 <gpu-host>       # SGLang token-stream server (dashboard, recommended)
+ssh -N -L 8140:localhost:8140 <gpu-host>       # transformers token-stream server (dashboard, simple)
+ssh -N -L 8100:localhost:8100 <gpu-host>       # SGLang frame server (Gradio app)
 ```
 
 ## 3. Run the demo (client)
@@ -58,7 +61,7 @@ polling; inference only runs while a browser is connected.
 ```bash
 cd demo
 pip install -r requirements.txt                # httpx + psutil (+ gradio for option B)
-SMLR_STREAM_URL=http://localhost:8140 python web.py     # open http://localhost:8130
+SMLR_STREAM_URL=http://localhost:8141 python web.py     # SGLang backend; open http://localhost:8130
 ```
 
 > **What "stream" means here (honest).** The *transport* is a real push stream, and *output* is
@@ -79,13 +82,18 @@ SMLR_SERVER_URL=http://localhost:8100 python app.py
 
 ## How it works
 
-- **`collectors.py`** (runs on the client) — real host data. `HostMetrics` samples
-  CPU/mem/load/disk/net via `psutil`; `HostLogs` tails the system's real-time logs
-  (`journalctl -f` on Linux, `log stream` on macOS, or a file via `SMLR_LOG_FILE=/path`).
-- **`smlr_client.py`** (runs on the client) — the closed loop, no model: render frame →
-  `POST /v1/frame` to the SGLang server → **carry `state_patch` forward** into the next frame,
-  and synthesize a `tool_result` when the model queries a tool so the query→confirm→alert
-  loop completes.
+- **`collectors.py`** (client) — real host data. `HostMetrics` samples CPU/mem/load/disk/net via
+  `psutil`; `HostLogs` tails the system's real-time logs (`journalctl -f` on Linux, `log stream` on
+  macOS, or a file via `SMLR_LOG_FILE=/path`).
+- **`web.py`** (client) — the HTML dashboard backend: a background loop samples telemetry and, per
+  frame, opens a token stream to the GPU host, relaying `frame_start → token → frame_done` to the
+  browser over SSE; runs the closed loop (**carry `state_patch` forward**, synthesize a `tool_result`
+  on a tool query so the query→confirm→alert loop completes).
+- **`stream_server.py`** / **[`../inference/smlr_sgl_stream_server.py`](../inference/smlr_sgl_stream_server.py)**
+  (GPU host) — the token-stream servers (transformers / SGLang): emit the decision at prefill latency,
+  stream `reasoning` token-by-token, then a `done` with the remaining lanes.
+- **`smlr_client.py`** (client) — the frame-protocol client for the Gradio app (`POST /v1/frame`, whole
+  frame at once, carry state forward).
 - **`app.py`** — the Gradio UI (two tabs, "Netis SMLR Tech Preview" throughout).
 
 ## Honest note on domain
@@ -102,7 +110,8 @@ limitations: [`../TECHNICAL_REPORT.md`](../TECHNICAL_REPORT.md).
 
 | Env | Default | Meaning |
 |---|---|---|
-| `SMLR_SERVER_URL` | `http://localhost:8100` | SMLR SGLang server (tunnel to the GPU host) |
+| `SMLR_STREAM_URL` | `http://localhost:8140` | token-stream server for the HTML dashboard (`web.py`) — point at `:8141` for SGLang |
+| `SMLR_SERVER_URL` | `http://localhost:8100` | SGLang frame server for the Gradio app (`app.py`) |
 | `SMLR_LOG_FILE` | *(auto)* | tail this file instead of journalctl/`log stream` |
 
-Cadence is a constant at the top of `app.py`.
+Cadence / stream floor are constants at the top of `web.py` and `app.py`.

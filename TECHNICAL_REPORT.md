@@ -440,6 +440,17 @@ Full details, both patches, the checkpoint build, and every reproduction command
 [`inference/`](inference/) — see [`inference/REPRODUCE.md`](inference/REPRODUCE.md) and the serving-port
 deep-dive [`inference/SGLANG_PORT.md`](inference/SGLANG_PORT.md).
 
+**Live serving — streaming and concurrency.** The serving path also supports **token-level streaming**:
+because the policy head reads the prompt-end hidden, the *decision* is emitted the instant prefill
+finishes (before any lane token), and the `reasoning` lane then streams token-by-token (ASR-style
+partial→final). On the SGLang engine this composes with continuous batching, so many sessions stream
+concurrently on one card — measured per-frame latency stays flat from 1→2 sessions and reaches ~3 s at 8
+concurrent, versus a non-batching server that serializes to ~32 s at 8. Note this is *output*-level
+streaming over a stream of discrete frames (~1/s); SMLR is a frame-level event reasoner, so true
+*input*-incremental streaming (persistent KV + delta feed + a StreamingLLM sliding window) would change
+the input to a multi-turn format the model wasn't trained on and needs a streaming-format retrain — out of
+scope here. The live demo ([`demo/`](demo/)) drives this against a machine's real telemetry.
+
 ---
 
 ## 9. Research history and lessons

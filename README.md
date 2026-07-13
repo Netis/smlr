@@ -15,23 +15,31 @@ wolf.
 
 ## 🛰️ Live demo — Netis SMLR Tech Preview
 
-Point SMLR at **your own machine's real telemetry** and watch it monitor live — actual CPU / memory / load,
-and the system's real-time logs. Two tabs (**Metric Monitoring**, **Log Monitoring**); it stays quiet on a
-healthy box and escalates `WAIT → WARN → ALERT` on genuine sustained load.
+Point SMLR at **your own machine's real telemetry** and watch it monitor live. A custom web dashboard —
+**left:** real CPU / memory / load with rolling charts; **right:** the model's output — streams
+frame-by-frame: the **decision appears the instant prefill finishes**, then the **reasoning types out
+token-by-token** (ASR-style), then the final `WARN` / `ALERT`. It stays quiet on a healthy box and
+escalates on genuine sustained load. (There's also a Gradio tabbed app for Metric + Log monitoring.)
 
-Inference runs on the GPU host via the **SGLang serving port**; the demo app is a thin client (no local
-model). Start the server, then run the client:
+Inference runs on the GPU host (no local model). Start a token-stream server, then run the dashboard:
 
 ```bash
-# GPU host: serve the model
-PORT=8100 SGL_GPU=<idle> CKPT=$HOME/models/smlr-1b-ml6 ./inference/start_sgl_server.sh
-# client (tunnel first if remote:  ssh -N -L 8100:localhost:8100 <gpu-host>)
-cd demo && pip install -r requirements.txt && SMLR_SERVER_URL=http://localhost:8100 python app.py
+# GPU host — SGLang backend (continuous batching → many concurrent sessions on one card)
+CKPT=$HOME/models/smlr-1b-ml6 SGL_GPU=<idle> PORT=8141 \
+  ~/miniconda3/envs/sglang/bin/python inference/smlr_sgl_stream_server.py
+# client (tunnel first if remote:  ssh -N -L 8141:localhost:8141 <gpu-host>)
+cd demo && pip install -r requirements.txt && SMLR_STREAM_URL=http://localhost:8141 python web.py
+# open http://localhost:8130
 ```
 
-See [`demo/README.md`](demo/README.md). *Tech Preview — the metrics model is trained on a specific
-network-monitoring domain, so real host signals are projected into its schema; detections are a preview,
-not calibrated production monitoring.*
+Two backends (SGLang for concurrency, transformers for a simple single-session setup) — see
+[`demo/README.md`](demo/README.md). Concurrency (per-frame latency, one card): SGLang
+**K=1 0.7 s → K=8 3.1 s** (batched) vs a non-batching server **K=8 32 s**.
+
+*Tech Preview — the metrics model is trained on a specific network-monitoring domain, so real host signals
+are projected into its schema; and it streams a continuous flow of frames (~1/s) with token-level output —
+SMLR is a frame-level reasoner, not a continuous-signal model. Detections are a preview, not calibrated
+production monitoring.*
 
 ---
 
@@ -112,9 +120,10 @@ The reasoning behind each of these — and the [10 banked lessons](TECHNICAL_REP
 |---|---|
 | [`TECHNICAL_REPORT.md`](TECHNICAL_REPORT.md) | The full report: task · architecture · training · evaluation · results · lessons · limits |
 | [`MODEL_CARD.md`](MODEL_CARD.md) | Concise model card (tiers, intended use, metrics, limitations) |
-| [`demo/`](demo/) | **Netis SMLR Tech Preview** live demo — monitors your machine's real CPU/mem + logs |
-| [`inference/`](inference/) | The SGLang serving port — one production inference backend for the model |
+| [`demo/`](demo/) | **Netis SMLR Tech Preview** live demo — HTML dashboard (`web.py`) + Gradio app (`app.py`), monitoring your machine's real CPU/mem + logs |
+| [`inference/`](inference/) | The SGLang serving port — production inference backends for the model |
 | [`inference/smlr_multilane.py`](inference/smlr_multilane.py) | Custom multi-head model: CUDA-graph-safe per-lane routing |
+| [`inference/smlr_sgl_stream_server.py`](inference/smlr_sgl_stream_server.py) | Token-streaming server: continuous batching (concurrency) + per-token output |
 | [`inference/SGLANG_PORT.md`](inference/SGLANG_PORT.md) | Serving-port deep-dive (incl. the RoPE-base finding) |
 | [`inference/REPRODUCE.md`](inference/REPRODUCE.md) | Environment, patches, checkpoint build, every reproduction command |
 
