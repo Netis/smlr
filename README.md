@@ -19,13 +19,19 @@ Point SMLR at **your own machine's real telemetry** and watch it monitor live �
 and the system's real-time logs. Two tabs (**Metric Monitoring**, **Log Monitoring**); it stays quiet on a
 healthy box and escalates `WAIT → WARN → ALERT` on genuine sustained load.
 
+Inference runs on the GPU host via the **SGLang serving port**; the demo app is a thin client (no local
+model). Start the server, then run the client:
+
 ```bash
-cd demo && pip install -r requirements.txt && python app.py   # loads netis-ai/smlr-metrics-1b (~4 GB)
+# GPU host: serve the model
+PORT=8100 SGL_GPU=<idle> CKPT=$HOME/models/smlr-1b-ml6 ./inference/start_sgl_server.sh
+# client (tunnel first if remote:  ssh -N -L 8100:localhost:8100 <gpu-host>)
+cd demo && pip install -r requirements.txt && SMLR_SERVER_URL=http://localhost:8100 python app.py
 ```
 
-Runs on GPU, Apple-Silicon (MPS), or CPU. See [`demo/README.md`](demo/README.md). *Tech Preview — the
-metrics model is trained on a specific network-monitoring domain, so real host signals are projected into
-its schema; detections are a preview, not calibrated production monitoring.*
+See [`demo/README.md`](demo/README.md). *Tech Preview — the metrics model is trained on a specific
+network-monitoring domain, so real host signals are projected into its schema; detections are a preview,
+not calibrated production monitoring.*
 
 ---
 

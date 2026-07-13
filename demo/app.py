@@ -1,13 +1,13 @@
 """Netis SMLR Tech Preview — live streaming-monitor demo.
 
-Points the SMLR metrics model (netis-ai/smlr-metrics-1b) at THIS machine's real
-telemetry: live CPU/memory/load, and the system's real-time logs. Two tabs, each
-streams frames into SMLR and shows its per-frame cognition (policy action, observation,
-reasoning, escalation).
+A thin client: it reads THIS machine's real telemetry (live CPU/memory/load and the
+system's real-time logs) and streams frames to the SMLR SGLang inference server running
+on the GPU host. No model runs locally.
 
-Run:  pip install -r requirements.txt  &&  python app.py
-GPU recommended; runs on Apple-Silicon (MPS) or CPU (slower). First run downloads the
-model (~4 GB).
+Point it at the server with SMLR_SERVER_URL (default http://localhost:8100 — use an SSH
+tunnel to the GPU host: `ssh -N -L 8100:localhost:8100 <gpu-host>`).
+
+Run:  pip install -r requirements.txt  &&  SMLR_SERVER_URL=http://localhost:8100 python app.py
 """
 
 from __future__ import annotations
@@ -18,18 +18,18 @@ import time
 import gradio as gr
 
 from collectors import HostLogs, HostMetrics
-from smlr_engine import SmlrEngine
+from smlr_client import SmlrClient
 
 BRAND = "Netis SMLR Tech Preview"
-CADENCE = 5.0  # seconds between frames (lower on GPU; ~5s suits CPU/MPS)
+CADENCE = 3.0  # seconds between frames (inference runs on the GPU host)
 
-print(f"[{BRAND}] loading model (first run downloads ~4GB)...")
-metric_engine = SmlrEngine()
-log_engine = SmlrEngine()          # shares the same underlying weights
+print(f"[{BRAND}] connecting to SGLang server...")
+metric_engine = SmlrClient()
+log_engine = SmlrClient()          # same server, independent session state
 host_metrics = HostMetrics()
 host_logs = HostLogs()
 _t0 = time.time()
-print(f"[{BRAND}] ready on device={metric_engine.device} | logs via {host_logs.source}")
+print(f"[{BRAND}] connected to {metric_engine.url} (model={metric_engine.model_name}) | logs via {host_logs.source}")
 
 _ACTION_COLOR = {
     "WAIT": "#6b7280", "NOTE": "#2563eb", "SUMMARY": "#2563eb", "QUESTION": "#2563eb",
@@ -106,10 +106,11 @@ def tick_logs():
     return recent, _badge(res["status"]), "".join(_log_log)
 
 
-CSS = ".brandbar{background:linear-gradient(90deg,#0b1220,#1e3a5f);color:#fff;padding:14px 18px;border-radius:10px}"
+_BRANDBAR = ("background:linear-gradient(90deg,#0b1220,#1e3a5f);color:#fff;"
+             "padding:14px 18px;border-radius:10px")
 
-with gr.Blocks(title=BRAND, css=CSS, theme=gr.themes.Soft()) as demo:
-    gr.HTML(f"<div class='brandbar'><h2 style='margin:0'>🛰️ {BRAND}</h2>"
+with gr.Blocks(title=BRAND) as demo:  # theme/css kept out of the constructor for gradio 4/5/6 compat
+    gr.HTML(f"<div style='{_BRANDBAR}'><h2 style='margin:0'>🛰️ {BRAND}</h2>"
             "<div style='opacity:.85;font-size:14px'>Live streaming monitor — SMLR watching this "
             "machine's real CPU/memory and real-time logs. Research preview; keep a human in the loop.</div></div>")
     gr.Markdown(
