@@ -17,16 +17,24 @@ Keep a human in the loop for any real action.</i></p>
 Two server flavors — pick the one for the interface you want:
 
 **Token-stream server** (for the HTML dashboard, option A) — streams each frame token-by-token
-(the policy DECISION the instant prefill finishes, then `reasoning` token-by-token). Uses the
-published model via transformers:
-```bash
-# on the GPU host — model dir has modeling_smlr.py + config auto_map (or point at netis-ai/smlr-metrics-1b)
-MODEL_DIR=$HOME/models/smlr-metrics-1b GPU=<idle> PORT=8140 python stream_server.py
-curl -s http://localhost:8140/health           # {"ok": true, "mode": "token-stream", ...}
-```
+(the policy DECISION the instant prefill finishes, then `reasoning` token-by-token). Two flavors,
+same SSE `/feed` protocol:
 
-**SGLang frame server** (for the Gradio app, option B) — returns a whole frame at once; see
-[`../inference/REPRODUCE.md`](../inference/REPRODUCE.md) to set up the SGLang port:
+- **SGLang** — *recommended for concurrency.* Continuous batching serves many sessions on one card
+  (see [`../inference/`](../inference/) to set up the SGLang port + patches):
+  ```bash
+  CKPT=$HOME/models/smlr-1b-ml6 SGL_GPU=<idle> PORT=8141 \
+    ~/miniconda3/envs/sglang/bin/python ../inference/smlr_sgl_stream_server.py
+  ```
+- **transformers** — simple, no SGLang needed, but **single-session** (no batching):
+  ```bash
+  MODEL_DIR=netis-ai/smlr-metrics-1b GPU=<idle> PORT=8140 python stream_server.py
+  ```
+
+Concurrency (per-frame latency at K concurrent sessions, one card): SGLang **K=1 0.7s → K=8 3.1s**
+(batched); transformers **K=1 2.5s → K=8 32s** (serialized). Point `SMLR_STREAM_URL` at whichever.
+
+**SGLang frame server** (for the Gradio app, option B) — returns a whole frame at once:
 ```bash
 PORT=8100 SGL_GPU=<idle> CKPT=$HOME/models/smlr-1b-ml6 ./start_sgl_server.sh
 ```
