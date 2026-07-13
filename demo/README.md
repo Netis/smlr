@@ -12,38 +12,52 @@ client** — no model, no torch, no GPU on the client side.
 <p align="center"><i>Netis SMLR Tech Preview — research preview, not a production monitor.
 Keep a human in the loop for any real action.</i></p>
 
-## 1. Start the inference server (GPU host)
+## 1. Start an inference server (GPU host)
 
-Set up the SGLang serving port (see [`../inference/REPRODUCE.md`](../inference/REPRODUCE.md) —
-apply the two patches, build the merged checkpoint), then launch the server:
+Two server flavors — pick the one for the interface you want:
 
+**Token-stream server** (for the HTML dashboard, option A) — streams each frame token-by-token
+(the policy DECISION the instant prefill finishes, then `reasoning` token-by-token). Uses the
+published model via transformers:
 ```bash
-# on the GPU host
-PORT=8100 SGL_GPU=<idle-gpu> CKPT=$HOME/models/smlr-1b-ml6 ./start_sgl_server.sh
-curl -s http://localhost:8100/health          # {"ok": true, "model": ..., "lanes": [...]}
+# on the GPU host — model dir has modeling_smlr.py + config auto_map (or point at netis-ai/smlr-metrics-1b)
+MODEL_DIR=$HOME/models/smlr-metrics-1b GPU=<idle> PORT=8140 python stream_server.py
+curl -s http://localhost:8140/health           # {"ok": true, "mode": "token-stream", ...}
+```
+
+**SGLang frame server** (for the Gradio app, option B) — returns a whole frame at once; see
+[`../inference/REPRODUCE.md`](../inference/REPRODUCE.md) to set up the SGLang port:
+```bash
+PORT=8100 SGL_GPU=<idle> CKPT=$HOME/models/smlr-1b-ml6 ./start_sgl_server.sh
 ```
 
 ## 2. Reach the server from where the demo runs
 
-If the demo runs on a different machine (e.g. your laptop), tunnel the port over SSH:
+If the demo runs on another machine (e.g. your laptop), tunnel the port over SSH:
 
 ```bash
-ssh -N -L 8100:localhost:8100 <gpu-host>       # leave running in a second terminal
+ssh -N -L 8140:localhost:8140 <gpu-host>       # token-stream server (option A)
+ssh -N -L 8100:localhost:8100 <gpu-host>       # SGLang frame server (option B)
 ```
 
 ## 3. Run the demo (client)
 
-Two interfaces, same backend — pick one:
-
 **A. Custom HTML dashboard** (left = live metrics + charts, right = model output) — a real
-**server-push stream** (Server-Sent Events): a background loop continuously samples telemetry,
-runs one closed-loop frame on the GPU host, and pushes each frame to the browser over one long
-`EventSource` connection (no client polling; inference only runs while a browser is connected):
+**token stream over Server-Sent Events**: a background loop continuously samples telemetry and,
+per frame, opens a token stream to the GPU host — the decision badge appears immediately, then
+`reasoning` types out token-by-token in the browser, then the final status lands. No client
+polling; inference only runs while a browser is connected.
 ```bash
 cd demo
 pip install -r requirements.txt                # httpx + psutil (+ gradio for option B)
-SMLR_SERVER_URL=http://localhost:8100 python web.py     # open http://localhost:8130
+SMLR_STREAM_URL=http://localhost:8140 python web.py     # open http://localhost:8130
 ```
+
+> **What "stream" means here (honest).** The *transport* is a real push stream, and *output* is
+> token-level (ASR-style partial→final). But SMLR is a **frame-level** event reasoner — it consumes
+> discrete frames (a metrics snapshot / a batch of log lines) one at a time, ~1/s, not a continuous
+> signal. True input-incremental streaming (persistent KV + delta feed + a StreamingLLM sliding
+> window) needs a streaming-format retrain and is out of scope for this preview.
 
 **B. Gradio app** (tabbed: Metric + Log monitoring):
 ```bash

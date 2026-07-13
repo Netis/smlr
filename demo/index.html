@@ -140,56 +140,65 @@ function push(arr,v){arr.push(v); if(arr.length>N) arr.shift();}
 function esc(s){return (s==null?"":String(s)).replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));}
 function asText(x){ if(x==null) return ""; if(Array.isArray(x)) return x.join(" · "); if(typeof x==="object") return JSON.stringify(x); return String(x);}
 
-let feed=[], es=null;
-function render(d){
-    if(d.error){ document.getElementById("conn").className="pill bad";
-      document.getElementById("conn").textContent="server error"; return; }
-    document.getElementById("conn").className="pill ok";
-    document.getElementById("conn").textContent="● streaming · "+(d.model||"sglang");
-    const m=d.metrics;
+let feed=[], es=null, curSeq=null, reasonBuf="";
+function setMetrics(m){
     document.getElementById("cpu_v").textContent=m.cpu_pct.toFixed(0)+"%";
     document.getElementById("mem_v").textContent=m.mem_pct.toFixed(0)+"%";
     document.getElementById("load_v").textContent=m.load_per_core.toFixed(2);
     document.getElementById("net_v").textContent=m.net_mbps;
     document.getElementById("disk_v").textContent=m.disk_mbps;
     document.getElementById("swap_v").textContent=m.swap_pct;
-    document.getElementById("seq_v").textContent=d.model_out.seq;
-    document.getElementById("lat_v").textContent=d.latency_ms??"–";
     push(series.cpu,m.cpu_pct); push(series.mem,m.mem_pct); push(series.load,Math.min(100,m.load_per_core*100));
     drawChart("cpu_c",series.cpu,m.cpu_pct); drawChart("mem_c",series.mem,m.mem_pct);
     drawChart("load_c",series.load,Math.min(100,m.load_per_core*100));
-
-    const o=d.model_out, st=o.status;
-    const badge=document.getElementById("badge");
-    badge.textContent=st; badge.style.background=COLOR[st]||"#6b7280";
-    document.getElementById("statusmeta").textContent=
-      (o.event_type==="tool_result"?"↳ from tool_result · ":"")+
-      (st!==o.next_action?("policy: "+o.next_action):"");
-    document.getElementById("obs").textContent=asText(o.observation)||"–";
-    document.getElementById("reason").textContent=o.reasoning||"–";
+}
+function setBadge(st){ const b=document.getElementById("badge"); b.textContent=st; b.style.background=COLOR[st]||"#6b7280"; }
+function onEvent(d){
+  if(d.type==="frame_start"){
+    curSeq=d.seq; reasonBuf="";
+    setMetrics(d.metrics);
+    document.getElementById("seq_v").textContent=d.seq;
+    document.getElementById("lat_v").textContent="live";
+    setBadge(d.next_action);
+    document.getElementById("statusmeta").textContent=(d.event_type==="tool_result"?"↳ from tool_result · ":"")+"decoding…";
+    document.getElementById("obs").textContent="…";
+    document.getElementById("reason").textContent="";
+    document.getElementById("pubwrap").style.display="none";
+    document.getElementById("toolwrap").style.display="none";
+  } else if(d.type==="token"){
+    if(d.seq!==curSeq) return;
+    reasonBuf+=d.text;
+    const r=document.getElementById("reason"); r.textContent=reasonBuf;
+  } else if(d.type==="frame_done"){
+    setBadge(d.status);
+    document.getElementById("statusmeta").textContent=(d.event_type==="tool_result"?"↳ from tool_result":"");
+    document.getElementById("obs").textContent=asText(d.observation)||"–";
+    document.getElementById("lat_v").textContent="done";
     const pw=document.getElementById("pubwrap");
-    if(o.public_mode && o.public_mode!=="SILENT" && o.public_text){
-      pw.style.display=""; document.getElementById("pub").textContent="📣 "+o.public_mode+": "+o.public_text;
+    if(d.public_mode && d.public_mode!=="SILENT" && d.public_text){
+      pw.style.display=""; document.getElementById("pub").textContent="📣 "+d.public_mode+": "+d.public_text;
     } else pw.style.display="none";
     const tw=document.getElementById("toolwrap");
-    if(o.tool_calls && o.tool_calls.length){
+    if(d.tool_calls && d.tool_calls.length){
       tw.style.display=""; document.getElementById("tools").textContent=
-        "🔧 query_tool: "+o.tool_calls.map(t=>t.tool||t.call_id||"tool").join(", ");
+        "🔧 query_tool: "+d.tool_calls.map(t=>t.tool||t.call_id||"tool").join(", ");
     } else tw.style.display="none";
-
-    if(st!=="WAIT" || (o.observation && String(o.observation).length)){
-      feed.unshift({t:new Date().toLocaleTimeString(),st,text:o.public_text||asText(o.observation)});
+    if(d.status!=="WAIT" || (d.observation && String(d.observation).length)){
+      feed.unshift({t:new Date().toLocaleTimeString(),st:d.status,text:d.public_text||asText(d.observation)});
       feed=feed.slice(0,40);
       document.getElementById("feed").innerHTML=feed.map(f=>
         `<div class="row"><span class="t">${f.t}</span> `+
         `<span class="dot" style="background:${COLOR[f.st]||'#6b7280'}"></span>`+
         `<b style="color:${COLOR[f.st]||'#6b7280'}">${f.st}</b> ${esc((f.text||"").slice(0,160))}</div>`).join("");
     }
+  } else if(d.type==="error"){
+    document.getElementById("conn").className="pill bad"; document.getElementById("conn").textContent="server error";
+  }
 }
 function connect(){
   es=new EventSource("/stream");
   es.onopen=()=>{ const p=document.getElementById("conn"); p.className="pill ok"; p.textContent="● streaming"; };
-  es.onmessage=e=>{ if(e.data && e.data[0]==="{"){ try{ render(JSON.parse(e.data)); }catch(_){} } };
+  es.onmessage=e=>{ if(e.data && e.data[0]==="{"){ try{ onEvent(JSON.parse(e.data)); }catch(_){} } };
   es.onerror=()=>{ const p=document.getElementById("conn"); p.className="pill bad"; p.textContent="reconnecting…"; };
 }
 document.getElementById("toggle").onclick=function(){
