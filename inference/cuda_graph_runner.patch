@@ -1,0 +1,29 @@
+--- /home/user/miniconda3/envs/sglang/lib/python3.12/site-packages/sglang/srt/model_executor/cuda_graph_runner.py.bak	2026-07-11 15:19:27.095284498 +0000
++++ /home/user/miniconda3/envs/sglang/lib/python3.12/site-packages/sglang/srt/model_executor/cuda_graph_runner.py	2026-07-11 15:19:27.095284498 +0000
+@@ -297,6 +297,8 @@
+                 (self.max_num_token,), dtype=self._cache_loc_dtype()
+             )
+             self.positions = torch.zeros((self.max_num_token,), dtype=torch.int64)
++            # SMLR: per-row lane id, read inside the captured model.forward
++            self.smlr_lane_ids = torch.zeros((self.max_num_token,), dtype=torch.int64)
+             self.mrope_positions = torch.zeros(
+                 (3, self.max_num_token), dtype=torch.int64
+             )
+@@ -616,6 +618,7 @@
+             global_forward_mode=self.capture_forward_mode,
+             lora_ids=lora_ids,
+         )
++        forward_batch.smlr_lane_ids = self.smlr_lane_ids[:num_tokens]
+         self.tbo_plugin.capture_one_batch_size(forward_batch, num_tokens=num_tokens)
+ 
+         if lora_ids is not None:
+@@ -733,6 +736,9 @@
+         self.seq_lens[:raw_bs].copy_(forward_batch.seq_lens)
+         self.out_cache_loc[:raw_num_token].copy_(forward_batch.out_cache_loc)
+         self.positions[:raw_num_token].copy_(forward_batch.positions)
++        _m = self.model_runner.model
++        if hasattr(_m, "smlr_fill_lane_ids"):
++            _m.smlr_fill_lane_ids(forward_batch, self.smlr_lane_ids)
+ 
+         seq_lens_cpu = None
+         if forward_batch.seq_lens_cpu is not None:

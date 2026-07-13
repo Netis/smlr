@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.env
+.DS_Store
+# run outputs captured by the harnesses
+*.log
+sgl_server.log
+heldout_*.json
+conc_*.json
+ml6_ref.json
+ctrl_*.json
+bugdiag_*.json
+stream_concat_report.json

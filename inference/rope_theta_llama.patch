@@ -1,0 +1,20 @@
+--- /home/user/miniconda3/envs/sglang/lib/python3.12/site-packages/sglang/srt/models/llama.py.bak	2026-07-12 04:01:35.102858225 +0000
++++ /home/user/miniconda3/envs/sglang/lib/python3.12/site-packages/sglang/srt/models/llama.py	2026-07-12 04:01:35.150857090 +0000
+@@ -209,8 +209,16 @@
+     ) -> None:
+         super().__init__()
+         self.hidden_size = config.hidden_size
+-        rope_theta = getattr(config, "rope_theta", 10000)
++        # SMLR rope_parameters shim: transformers 5.x nests rope_theta under rope_parameters/
++        # rope_scaling (rope_type="default"); sglang 0.5.3 reads top-level config.rope_theta only and
++        # would silently fall back to 10000 (trained base is 5e6) -> position-dependent hidden drift.
++        _rp = getattr(config, "rope_parameters", None) or getattr(config, "rope_scaling", None) or {}
++        rope_theta = getattr(config, "rope_theta", None)
++        if rope_theta is None:
++            rope_theta = (_rp or {}).get("rope_theta", 10000)
+         rope_scaling = getattr(config, "rope_scaling", None)
++        if isinstance(rope_scaling, dict) and rope_scaling.get("rope_type", rope_scaling.get("type")) in (None, "default"):
++            rope_scaling = None
+         if rope_scaling is not None and getattr(
+             config, "original_max_position_embeddings", None
+         ):
