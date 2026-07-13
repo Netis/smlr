@@ -33,9 +33,17 @@ ssh -N -L 8100:localhost:8100 <gpu-host>       # leave running in a second termi
 
 ## 3. Run the demo (client)
 
+Two interfaces, same backend — pick one:
+
+**A. Custom HTML dashboard** (left = live metrics + charts, right = model output):
 ```bash
 cd demo
-pip install -r requirements.txt                # gradio + httpx + psutil only
+pip install -r requirements.txt                # httpx + psutil (+ gradio for option B)
+SMLR_SERVER_URL=http://localhost:8100 python web.py     # open http://localhost:8130
+```
+
+**B. Gradio app** (tabbed: Metric + Log monitoring):
+```bash
 SMLR_SERVER_URL=http://localhost:8100 python app.py
 ```
 
