@@ -105,13 +105,11 @@ concurrent-session density** ([report §7–8](TECHNICAL_REPORT.md#7-results)).
 
 - **Root cause** stays weak (~0.44 on the hard cascade metric) — deliberately outside the real-time bar,
   not solved.
-- **Three base-swaps** (HRM, RWKV-7, a self-built 1.2B) all NO-GO → the ceiling is domain knowledge, not
-  the checkpoint.
 - **Speculative decoding** is a negative result (kept off): ~2.2× on paper, ~1.2–1.7× with a P99
   regression in reality.
 - **Real-time lag** missed the bar on a shared GPU — needs an exclusive-GPU retest.
 
-The reasoning behind each of these — and the [10 banked lessons](TECHNICAL_REPORT.md#9-research-history-and-lessons)
+The reasoning behind each of these — and the [banked lessons](TECHNICAL_REPORT.md#9-research-history-and-lessons)
 — is the real content of the [report](TECHNICAL_REPORT.md).
 
 ## Repository layout

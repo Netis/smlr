@@ -109,7 +109,7 @@ the base's `model_type` resolves to, then attaching the extra heads.
 
 - **Backbone** `self.bb` — the transformer stack of the base model (without its `lm_head`). Resolved by
   `model_type`: MiniCPM5-1B loads as `llama`, Qwen3-4B as `qwen3`. Training-time construction mirrors the
-  runtime exactly; a mismatch here fails *silently* (see §9, lesson 8).
+  runtime exactly; a mismatch here fails *silently* (see §9, lesson 1).
 - **`policy_head`** — `Linear(hidden, 10)`, bias enabled, **randomly initialized** (a fresh classifier).
   It reads the single prompt-end hidden state and predicts `next_action` as one of 10 labels. Crucially,
   this decision is available at **prefill latency, before any lane token is decoded** — the model knows
@@ -199,36 +199,23 @@ general pretraining (base)  →  [mid-training: domain corpus]  →  task SFT (f
 The fused SFT stage is the core; mid-training was added later to attack a root-cause ceiling; the
 cascade is an optional offline oracle.
 
-### 4.2 Base tiers, and the bases that were rejected
+### 4.2 Base tiers
 
-Four backbones were evaluated as single-variable swaps on identical data and recipe:
+The system ships two tiers, each a LoRA/QLoRA adapter over a frozen base, selected by a single-variable
+comparison on identical data and recipe:
 
-| Base | Arch | Outcome |
+| Base | Arch | Role |
 |---|---|---|
-| **Qwen3-4B** | qwen3 | **Shipped** — logs tier |
-| **MiniCPM5-1B-SFT** | llama | **Shipped** — metrics tier (4× smaller) |
-| HRM-Text-1B (recursive-reasoning) | hrm_text | **Rejected** — never learned to call tools |
-| RWKV-7-1.5B (linear attention) | rwkv7 | **Rejected** as the capstone base — long-range recall too weak |
-| nanoai gp1b (self-built, 1.2B, ~30% trained) | custom | **Rejected** — root-cause ceiling not moved |
+| **Qwen3-4B** | qwen3 | logs tier |
+| **MiniCPM5-1B-SFT** | llama | metrics tier (4× smaller) |
 
-The rejected bases were not wasted effort — each falsified a specific hypothesis:
-
-- **HRM** learned the *discipline* ("don't alert metrics without tool evidence") but never learned to
-  *execute* the tool calls, so it permanently waits in any tool-closed-loop domain — while winning on
-  self-describing k8s events that need no tool loop. Cost 5–6× decode latency.
-- **RWKV-7** learned the protocol *form* (99%+ valid JSON) but its policy collapsed to always-`WAIT`; the
-  decisive negative was a direct long-range-recall probe (recall at ~2048-token distance: 0.28 vs 1.0 for
-  a same-size attention model). For a task whose whole point is remembering an incident across a
-  trajectory, linear-attention recall is a moat, not a scaffold. Kept as a complementary O(1) streaming
-  option, not the base.
-- **nanoai gp1b** integrated end-to-end (a non-HF base behind the same client) and, after an
-  action-upsampling retrain, *cleanly cured under-alerting* — but its root-cause number would not move.
-  Three further base-swaps all lost to the original checkpoint. This is what closed the "swap the base"
-  line entirely (§9, lesson 3).
+The base is dispatched by `model_type` (§3.1), so both load through the same code path. As §6 and §7
+show, the two tiers did *not* respond the same way to the training interventions — a central finding of
+the project.
 
 ### 4.3 Mid-training: the domain-knowledge stage
 
-**Why.** Earlier base-swap experiments established that the root-cause (rc) ceiling was **not** an SFT quantity or
+**Why.** Earlier experiments established that the root-cause (rc) ceiling was **not** an SFT quantity or
 behavior problem — it was the base lacking *domain knowledge*. The held-out set is deliberately
 zero-shot: training incidents cover one set of causes; held-out tests *different* look-alike causes the
 model has never seen (e.g. `dns_failure`, `thermal_throttle`, `bufferbloat`, `silent_drop`). A 4B model
@@ -268,7 +255,7 @@ not broken. And critically, the *same corpus and recipe* helped the 4B tier and 
   llama-arch base inside it randomly initialized qwen3-only `q_norm`/`k_norm` modules that the runtime
   (loading llama) does not have — producing a train/infer hidden-state mismatch that made **training
   metrics perfect while inference silently collapsed to all-`WAIT`**. This burned two multi-hour runs and
-  is the origin of lesson 8.
+  is the origin of lesson 1.
 - **Hyperparameters (fused trainer defaults).** 3 epochs, batch 8, grad-accum 2, LR 2e-4, cosine, warmup
   0.03, max length 2048; LoRA r=32 α=64 dropout 0.05; paged 8-bit AdamW; bf16; save every 1500 steps.
   `policy_alpha` recommended 2.0 (recovers the 10-way policy head and lifts ALERT recall, at a ~2-point
@@ -343,7 +330,6 @@ add the look-alike types and order them before the generic ones, same scoring ru
 |---|---|---|
 | MiniCPM-1B (metrics held-out) | 0.19 | **0.75** |
 | Qwen-4B (metrics held-out) | 0.12 | **0.875** |
-| HRM-1B | 0.19 | 0.562 |
 
 Recomputed across earlier runs, rc was **never** actually stuck at 0.19 anywhere; a fixed control at
 0.125 confirmed the fix corrected scoring rather than handing out free points. A further nuance fell out:
@@ -352,8 +338,8 @@ the base-size advantage on rc is **data-dependent and can flip sign** — at 15.
 k8s scorers use per-scenario keyword ground truth and were structurally immune; they were audited and
 hardened anyway, with zero score change.)
 
-This is lesson 2, and it is the most important methodological result in the project: **measure the noise
-floor and audit the scorer before drawing conclusions about the model.**
+This is the most important methodological result in the project: **measure the noise floor and audit the
+scorer before drawing conclusions about the model.**
 
 ---
 
@@ -459,39 +445,22 @@ The value of this project is as much in what failed as in what shipped. The arc,
 
 - **Base isolation** — swap the base as a single variable; discover that padding the data with pure-`WAIT`
   frames is not "more data" and regresses alerting.
-- **A recursive-reasoning base** (HRM): NO-GO — it never learned to call tools.
 - **The rc "wall" was ¾ a broken evaluator** (§6) — the pivot of the whole project.
-- **A self-built base and three swaps**, all NO-GO → **the wall is domain knowledge, not the
-  checkpoint**; the base-swap line was closed.
 - **Mid-training** — moves detect/alert but not root cause → scope re-defined to detect+alert.
 - **Detect/alert made real** and shipped as two tiers; mid-training helps the 4B, hurts the 1B; soft
   thresholds; the honest real-time-lag gap.
 - **Serving and concurrency** — a KV-traffic misdiagnosis corrected by profiling; a speculative-decode
   negative result; the SGLang port and its RoPE finding.
 
-The banked lessons, in priority order:
+The banked lessons:
 
-1. **Validate closed-loop models closed-loop.** Every static/single-frame check in this project was
-   misleading; only full closed-loop held-out evaluation revealed the real behavior. Numeric error
-   compounds frame-to-frame because state feeds forward.
-2. **Audit the scorer and measure the noise floor before concluding anything about the model.** A stale
-   keyword table biased four milestones.
-3. **Changing the base doesn't fix a domain-knowledge gap.** Low validation loss ≠ good task
-   representation; the pretraining domain must match the task.
-4. **Don't accept "inherent drift" for a numeric anomaly — check the config first.** A length-dependent
-   divergence is a RoPE/precision signature, not kernel noise.
-5. **Be adversarial with favorable numbers.** The two biggest errors of the serving arc were over-trusted
-   *positives* (a self-deceiving "2.81×" speculative-decode number against a strawman baseline; a "0.88
-   framework floor" that was really the RoPE bug); the biggest save came from *distrusting* a convenient
-   negative. Never benchmark against a strawman — compare against the shipped path.
-6. **Every delivery target needs its own A/B.** Mid-training helped the 4B and hurt the 1B, same recipe.
-7. **Train/infer architecture mismatch fails silently** — perfect training metrics, all-`WAIT`
+1. **Train/infer architecture mismatch fails silently** — perfect training metrics, all-`WAIT`
    inference. Dispatch the base class by `model_type`; gate the first training run on a smoke eval.
-8. **Offline calibration can be blind to the very failure it must catch** (metrics false-alerts) →
+2. **Offline calibration can be blind to the very failure it must catch** (metrics false-alerts) →
    validate on real held-out double-runs.
-9. **Cadence is a real recall/latency tradeoff**, not an independently-tunable knob.
-10. **Profile before optimizing.** A whole family of optimizations chased a 2% attention cost; the real
-    bottleneck was cache-copy overhead and small-kernel launch gaps.
+3. **Cadence is a real recall/latency tradeoff**, not an independently-tunable knob.
+4. **Profile before optimizing.** A whole family of optimizations chased a 2% attention cost; the real
+   bottleneck was cache-copy overhead and small-kernel launch gaps.
 
 ---
 
