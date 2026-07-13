@@ -70,9 +70,11 @@ attribution.
 
 ## Weights
 
-Model weights are **not** included in this repository. The evaluated checkpoint is rebuilt from base +
-adapter using the build script in [`inference/REPRODUCE.md`](inference/REPRODUCE.md). Base models
-(MiniCPM5-1B, Qwen3-4B) are governed by their own upstream licenses.
+The **metrics-1B** tier is published as a Tech Preview on the Hub:
+[**`netis-ai/smlr-metrics-1b`**](https://huggingface.co/netis-ai/smlr-metrics-1b) (merged, transformers-loadable
+via `trust_remote_code`). The logs-4B tier is not published; it can be rebuilt from base + adapter using the
+build script in [`inference/REPRODUCE.md`](inference/REPRODUCE.md). Base models (MiniCPM5-1B, Qwen3-4B) are
+governed by their own upstream licenses.
 
 ## License
 

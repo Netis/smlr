@@ -1,0 +1,7 @@
+gradio>=4.44
+torch>=2.2
+transformers>=5.0
+accelerate>=0.30
+safetensors>=0.4
+psutil>=5.9
+sentencepiece

@@ -10,7 +10,22 @@ wolf.
 > methodology, measured results (including the negative ones), and a reproducible inference path. It is not
 > a turnkey product. Every headline number is stated with its sample size and its caveat.
 >
-> 📄 **Read the [Technical Report](TECHNICAL_REPORT.md) for the full story** · 🗂 **[Model Card](MODEL_CARD.md)**
+> 📄 **[Technical Report](TECHNICAL_REPORT.md)** · 🗂 **[Model Card](MODEL_CARD.md)** ·
+> 🤗 **[Model on HF](https://huggingface.co/netis-ai/smlr-metrics-1b)** · 🖥️ **[Live demo](demo/)**
+
+## 🛰️ Live demo — Netis SMLR Tech Preview
+
+Point SMLR at **your own machine's real telemetry** and watch it monitor live — actual CPU / memory / load,
+and the system's real-time logs. Two tabs (**Metric Monitoring**, **Log Monitoring**); it stays quiet on a
+healthy box and escalates `WAIT → WARN → ALERT` on genuine sustained load.
+
+```bash
+cd demo && pip install -r requirements.txt && python app.py   # loads netis-ai/smlr-metrics-1b (~4 GB)
+```
+
+Runs on GPU, Apple-Silicon (MPS), or CPU. See [`demo/README.md`](demo/README.md). *Tech Preview — the
+metrics model is trained on a specific network-monitoring domain, so real host signals are projected into
+its schema; detections are a preview, not calibrated production monitoring.*
 
 ---
 
@@ -91,6 +106,7 @@ The reasoning behind each of these — and the [10 banked lessons](TECHNICAL_REP
 |---|---|
 | [`TECHNICAL_REPORT.md`](TECHNICAL_REPORT.md) | The full report: task · architecture · training · evaluation · results · lessons · limits |
 | [`MODEL_CARD.md`](MODEL_CARD.md) | Concise model card (tiers, intended use, metrics, limitations) |
+| [`demo/`](demo/) | **Netis SMLR Tech Preview** live demo — monitors your machine's real CPU/mem + logs |
 | [`inference/`](inference/) | The SGLang serving port — one production inference backend for the model |
 | [`inference/smlr_multilane.py`](inference/smlr_multilane.py) | Custom multi-head model: CUDA-graph-safe per-lane routing |
 | [`inference/SGLANG_PORT.md`](inference/SGLANG_PORT.md) | Serving-port deep-dive (incl. the RoPE-base finding) |
