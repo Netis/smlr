@@ -35,7 +35,10 @@ ssh -N -L 8100:localhost:8100 <gpu-host>       # leave running in a second termi
 
 Two interfaces, same backend — pick one:
 
-**A. Custom HTML dashboard** (left = live metrics + charts, right = model output):
+**A. Custom HTML dashboard** (left = live metrics + charts, right = model output) — a real
+**server-push stream** (Server-Sent Events): a background loop continuously samples telemetry,
+runs one closed-loop frame on the GPU host, and pushes each frame to the browser over one long
+`EventSource` connection (no client polling; inference only runs while a browser is connected):
 ```bash
 cd demo
 pip install -r requirements.txt                # httpx + psutil (+ gradio for option B)

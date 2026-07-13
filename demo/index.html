@@ -140,13 +140,12 @@ function push(arr,v){arr.push(v); if(arr.length>N) arr.shift();}
 function esc(s){return (s==null?"":String(s)).replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));}
 function asText(x){ if(x==null) return ""; if(Array.isArray(x)) return x.join(" · "); if(typeof x==="object") return JSON.stringify(x); return String(x);}
 
-let running=true, feed=[];
-async function tick(){
-  if(!running) return;
-  try{
-    const r=await fetch("/tick"); const d=await r.json();
+let feed=[], es=null;
+function render(d){
+    if(d.error){ document.getElementById("conn").className="pill bad";
+      document.getElementById("conn").textContent="server error"; return; }
     document.getElementById("conn").className="pill ok";
-    document.getElementById("conn").textContent="● "+(d.model||"sglang");
+    document.getElementById("conn").textContent="● streaming · "+(d.model||"sglang");
     const m=d.metrics;
     document.getElementById("cpu_v").textContent=m.cpu_pct.toFixed(0)+"%";
     document.getElementById("mem_v").textContent=m.mem_pct.toFixed(0)+"%";
@@ -186,16 +185,19 @@ async function tick(){
         `<span class="dot" style="background:${COLOR[f.st]||'#6b7280'}"></span>`+
         `<b style="color:${COLOR[f.st]||'#6b7280'}">${f.st}</b> ${esc((f.text||"").slice(0,160))}</div>`).join("");
     }
-  }catch(e){
-    document.getElementById("conn").className="pill bad";
-    document.getElementById("conn").textContent="disconnected";
-  }
+}
+function connect(){
+  es=new EventSource("/stream");
+  es.onopen=()=>{ const p=document.getElementById("conn"); p.className="pill ok"; p.textContent="● streaming"; };
+  es.onmessage=e=>{ if(e.data && e.data[0]==="{"){ try{ render(JSON.parse(e.data)); }catch(_){} } };
+  es.onerror=()=>{ const p=document.getElementById("conn"); p.className="pill bad"; p.textContent="reconnecting…"; };
 }
 document.getElementById("toggle").onclick=function(){
-  running=!running; this.textContent=running?"⏸ Pause":"▶ Resume";
+  if(es){ es.close(); es=null; this.textContent="▶ Resume";
+    const p=document.getElementById("conn"); p.className="pill"; p.textContent="paused"; }
+  else { connect(); this.textContent="⏸ Pause"; }
 };
-setInterval(tick, 2500);
-tick();
+connect();
 </script>
 </body>
 </html>
