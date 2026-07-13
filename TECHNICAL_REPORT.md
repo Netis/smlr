@@ -77,10 +77,10 @@ ephemeral / durable.
 
 ### 2.3 Cadence and concurrency
 
-The production target (milestone M18) is a **2-second cadence** scaling to **32–64 concurrent sessions,
+The production target is a **2-second cadence** scaling to **32–64 concurrent sessions,
 each kept real-time** (per-frame latency below the cadence). Because steady-state monitoring is
 mostly-silent, "64 real-time sessions" reduces in practice to "can 64 mostly-`WAIT` frames finish inside
-one cadence window." *The 2 s value is itself provisional* — it is the cadence M17 picked to align the
+one cadence window." *The 2 s value is itself provisional* — it is the cadence picked to align the
 detection numbers; if the true operational beat is 3–4 s, the single-card path already meets it (§7).
 
 ---
@@ -132,7 +132,7 @@ WAIT · NOTE · SUMMARY · QUESTION · VERIFY · QUERY_TOOL · WARN · ALERT · 
 
 ### 3.3 The lanes
 
-The lane set is read at load time from the adapter's manifest. The canonical set (M7 onward) is **6
+The lane set is read at load time from the adapter's manifest. The canonical set is **6
 lanes**, in order, each with a decode-length cap (`MAX_NEW`) chosen so the slowest lane sets the frame's
 parallel wall-clock:
 
@@ -154,7 +154,7 @@ parallel wall-clock:
    KV cache, so lane heads decode in parallel and the wall-clock is `prefill + max_lane`, not
    `Σ_lane`.
 3. **Policy read** at the prompt-end hidden: `policy_head(H[-1])` → argmax → `next_action`. The full
-   softmax distribution (`policy_probs`) is also carried, and is what the M17 soft-escalation consumes.
+   softmax distribution (`policy_probs`) is also carried, and is what the soft-escalation policy consumes.
 4. **Per-lane autoregressive decode**: each lane applies *its own* head to *its own* batch row, feeds the
    token back through the shared backbone with `past_key_values`, and stops on EOS or its cap.
 5. Assemble `{next_action, <lane>: parsed_lane_output}` and validate.
@@ -196,7 +196,7 @@ the same way to the training interventions — a central finding of the project.
 general pretraining (base)  →  [mid-training: domain corpus]  →  task SFT (fused multi-lane)  →  cascade
 ```
 
-The fused SFT stage is the core; mid-training was added later (M16) to attack a root-cause ceiling; the
+The fused SFT stage is the core; mid-training was added later to attack a root-cause ceiling; the
 cascade is an optional offline oracle.
 
 ### 4.2 Base tiers, and the bases that were rejected
@@ -226,9 +226,9 @@ The rejected bases were not wasted effort — each falsified a specific hypothes
   Three further base-swaps all lost to the original checkpoint. This is what closed the "swap the base"
   line entirely (§9, lesson 3).
 
-### 4.3 Mid-training (M16): the domain-knowledge stage
+### 4.3 Mid-training: the domain-knowledge stage
 
-**Why.** Milestones M13–M15 established that the root-cause (rc) ceiling was **not** an SFT quantity or
+**Why.** Earlier base-swap experiments established that the root-cause (rc) ceiling was **not** an SFT quantity or
 behavior problem — it was the base lacking *domain knowledge*. The held-out set is deliberately
 zero-shot: training incidents cover one set of causes; held-out tests *different* look-alike causes the
 model has never seen (e.g. `dns_failure`, `thermal_throttle`, `bufferbloat`, `silent_drop`). A 4B model
@@ -324,7 +324,7 @@ escalation before onset).
 
 The held-out sets are deliberately zero-shot: metrics held-out uses `bufferbloat` / `silent_drop`
 look-alikes (never in the training corpus); logs held-out uses `dns_failure` / `thermal_throttle` (100%
-zero-shot). The real-time pass bar (M17) is **detect recall → 1.0 AND false_alerts = 0**. Root cause is
+zero-shot). The real-time pass bar is **detect recall → 1.0 AND false_alerts = 0**. Root cause is
 explicitly outside the real-time bar. Sample sizes are small (n=16 metrics, n=12 logs) — a noise band —
 so only directional signals are trusted.
 
@@ -333,7 +333,7 @@ so only directional signals are trusted.
 ## 6. The root-cause "wall" was mostly a broken evaluator
 
 For four milestones an apparent root-cause ceiling of **rc ≈ 0.19** on metrics held-out shaped the
-narrative ("small models can't diagnose"). In M12-B it was traced — while building something else — to
+narrative ("small models can't diagnose"). It was later traced — while building something else — to
 **the scorer, not the model**. The `_CAUSE_KEYS` table in the metrics evaluator (a) recognized only 5
 legacy cause types and omitted every newer look-alike type, so a *correct* diagnosis scored False; and
 (b) mismatched evidence words (a look-alike's evidence phrase hit a generic cause's keyword). The fix —
@@ -359,7 +359,7 @@ floor and audit the scorer before drawing conclusions about the model.**
 
 ## 7. Results
 
-### 7.1 Shipped configuration (M17)
+### 7.1 Shipped configuration
 
 | Tier | Base + adapter | Thresholds | Metrics det/alert/fa | Logs det/alert/fa |
 |---|---|---|---|---|
@@ -387,14 +387,14 @@ belongs to retraining.
 
 ### 7.3 Real-time latency (the honest gap)
 
-Detection numbers reproduce cleanly, but on the M17 SLA run **both tiers missed the real-time lag bar**
+Detection numbers reproduce cleanly, but on the SLA run **both tiers missed the real-time lag bar**
 (1B: +70–110 s max lag; 4B: +180–310 s) at 2 s cadence. This is attributed to the test running on a
 **shared multi-user GPU** and contradicts an earlier exclusive-GPU result (1B at 3 s cadence → lag ≈ 0).
 It is flagged as **needing an exclusive-GPU retest** and does not block the correctness verdict — but it
 is unresolved. Note also that cadence is a real recall/latency tradeoff: raising cadence to "fix" lag
 (8–20 s) crashed detection (4B metrics detect 16→5/16). You cannot tune them independently.
 
-### 7.4 Serving and concurrency (M18)
+### 7.4 Serving and concurrency
 
 The hand-rolled serving path was optimized to a `call_batch` that does prefill-once + compaction +
 WAIT-skip (5.4× over naive) and then host-surgery + `torch.compile` (dynamic, no-CUDA-graph) for a
@@ -455,18 +455,18 @@ scope here. The live demo ([`demo/`](demo/)) drives this against a machine's rea
 
 ## 9. Research history and lessons
 
-The value of this project is as much in what failed as in what shipped. The arc, briefly:
+The value of this project is as much in what failed as in what shipped. The arc, briefly and in order:
 
-- **M8–M9** — isolate the base as a single variable; discover that adding pure-`WAIT` frames is not
-  "more data" and regresses alerting.
-- **M11** — HRM recursive base: NO-GO (tool-calling collapse).
-- **M12-B** — the rc "wall" is ¾ a broken evaluator (§6). The pivot of the whole project.
-- **M13–M15** — a self-built base and three swaps, all NO-GO → **the wall is domain knowledge, not the
-  checkpoint**; base-swap line closed.
-- **M16** — mid-training: moves detect/alert but not root cause → scope re-defined to detect+alert.
-- **M17** — detect/alert made real and shipped as two tiers; mid-training helps 4B, hurts 1B; soft
+- **Base isolation** — swap the base as a single variable; discover that padding the data with pure-`WAIT`
+  frames is not "more data" and regresses alerting.
+- **A recursive-reasoning base** (HRM): NO-GO — it never learned to call tools.
+- **The rc "wall" was ¾ a broken evaluator** (§6) — the pivot of the whole project.
+- **A self-built base and three swaps**, all NO-GO → **the wall is domain knowledge, not the
+  checkpoint**; the base-swap line was closed.
+- **Mid-training** — moves detect/alert but not root cause → scope re-defined to detect+alert.
+- **Detect/alert made real** and shipped as two tiers; mid-training helps the 4B, hurts the 1B; soft
   thresholds; the honest real-time-lag gap.
-- **M18** — serving and concurrency: a KV-traffic misdiagnosis corrected by profiling; a speculative-decode
+- **Serving and concurrency** — a KV-traffic misdiagnosis corrected by profiling; a speculative-decode
   negative result; the SGLang port and its RoPE finding.
 
 The banked lessons, in priority order:

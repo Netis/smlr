@@ -43,7 +43,7 @@ backbone 6×).
 - **CUDA-graph-safe routing**: compute all lane heads `[L,N,V]` + `gather` by a device lane-id tensor
   threaded through SGLang's `cuda_graph_runner` replay. Without graphs the port LOSES; with them it wins —
   graphs were essential, not upside.
-- **Policy read**: `policy_head` (+bias, with full `policy_probs` for M17 soft-escalation) applied to the
+- **Policy read**: `policy_head` (+bias, with full `policy_probs` for soft-escalation) applied to the
   prompt-end hidden via a hidden-state capture.
 - A Reasoner-compatible `SglangVLAClient` (`.call`/`.usage`/`CallMeta`).
 
